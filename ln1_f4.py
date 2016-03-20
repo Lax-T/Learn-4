@@ -1,115 +1,109 @@
-#!/usr/bin/python
-#coding: utf8
-#Програма повинна запускатися кожних 5хв (12 запусків за год) і записувати статистику використання ресурсів в БД, через годину 
-#дані з БД усереднюються та відправляються на електронку у вигляді таблиці з статистикою
+# !/usr/bin/python
+# coding: utf8
 
+import os
+import json
+import datetime
 import smtplib
 import subprocess
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-data_string = [] #Усі дані зберігаються у форматі cpu_total,cpu_user,cpu_sys,cpu_idle,mem_total,mem_used,mem_free,mem_cached,hdd_total,hdd_used,hdd_free
 
-def get_raw_data(command): #функція виконує консольну команду та повертає результат
+def get_sysresinfo(command):  # функція виконує консольну команду та повертає результат
     command_data = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
     (command_data, err) = command_data.communicate()
-    command_data = command_data.replace(",",".") #Заміна ком на крапки для коректного виконання float()
+    command_data = command_data.replace(",", ".")  # Заміна ком на крапки для коректного виконання float()
     return command_data.split()
 
-raw = get_raw_data("mpstat") #обробка даних по завантаженості процесора
+
+raw = get_sysresinfo("mpstat")  # обробка даних по завантаженості процесора
 cpu_user = float(raw[21])
 cpu_sys = 0
 for x in raw[22:29]:
-    cpu_sys = cpu_sys + float(x)
+    cpu_sys += float(x)
 cpu_total = cpu_user + cpu_sys
 cpu_idle = float(raw[30])
-cpu_string = ("CPU - Total used:%s%%, User:%s%%, System:%s%%, Idle:%s%%" % (cpu_total, cpu_user, cpu_sys, cpu_idle))
-print (cpu_string) #в принципі виводити проміжні дані в консоль непотрібно але я залишив це
+print ("CPU - Total used:%s%%, User:%s%%, System:%s%%, Idle:%s%%" % (cpu_total, cpu_user, cpu_sys, cpu_idle))
 
-raw = get_raw_data("free -m") #обробка даних по завантаженості оперативної памяті
+raw = get_sysresinfo("free -m")  # обробка даних по завантаженості оперативної памяті
 mem_total = int(raw[7])
 mem_used = int(raw[8])
 mem_free = int(raw[9])
 mem_cached = int(raw[12])
-mem_string = ("MEMORY - Total:%sMb, Used:%sMb, Free:%sMb, Cached:%sMb" % (mem_total, mem_used, mem_free, mem_cached))
-print (mem_string)
+print ("MEMORY - Total:%sMb, Used:%sMb, Free:%sMb, Cached:%sMb" % (mem_total, mem_used, mem_free, mem_cached))
 
-raw = get_raw_data("df -m --total") #обробка данних по жорсткому диску
+raw = get_sysresinfo("df -m --total")  # обробка данних по жорсткому диску
 hdd_total = int(raw[50])
 hdd_used = int(raw[51])
 hdd_free = int(raw[52])
-hdd_string = ("Hard disk drive - Total:%sMb, Used:%sMb, Free:%sMb" % (hdd_total, hdd_used, hdd_free))
-print (hdd_string)
+print ("Hard disk drive - Total:%sMb, Used:%sMb, Free:%sMb" % (hdd_total, hdd_used, hdd_free))
 
-                        #формування єдиного рядка з данними для запису в файл
-var_names_list = [cpu_total,cpu_user,cpu_sys,cpu_idle,mem_total,mem_used,mem_free,mem_cached,hdd_total,hdd_used,hdd_free]
-for x in var_names_list:
-    data_string.append(x)
+systime_customformat = datetime.datetime.now()
+systime_customformat = systime_customformat.strftime("%d,%m,%Y,%H,%M,%S")
 
-###############################################################################################################
-
-try:
-    database_file = open("database.txt", "r") #пробую відкрити файл БД
-    db_lines_count = int(database_file.readline())
-
-except IOError:
-    database_file = open("database.txt", "w") #якщо помилка то створюю чистий
-    database_file.write("0"+"\n")
-    db_lines_count = 0
-
-finally:
-    database_file.close() #закриваю файл
-
-database_file = open("database.txt", "a") #відкриваю файл та добавляю рядок з данними в БД
-database_file.write(str(data_string) + "\n")
-database_file.close()
-db_lines_count += 1
-database_file = open("database.txt", "r+") #перезаписую лічильник кількості рядків в БД
-database_file.seek(0,0)
-database_file.write(str(db_lines_count) + "\n")
-database_file.close()
+sysinfo_variables_names = [cpu_total, cpu_user, cpu_sys, cpu_idle, mem_total, mem_used, mem_free,
+                           mem_cached, hdd_total, hdd_used, hdd_free]
+sysinfo_database_keys = ["cpu_total", "cpu_user", "cpu_sys", "cpu_idle", "mem_total", "mem_used", "mem_free",
+                         "mem_cached", "hdd_total", "hdd_used", "hdd_free"]
 
 ###############################################################################################################
 
-if db_lines_count >= 12: #перевіряю чи записана достатня кількість рядків, якщо так то починаю обробку
-    database_file = open("database.txt", "r")
-    dump = database_file.readline() #"пуста" процедура зчитування щоб пропустити рядок з лічильником
+if os.path.isfile("database2") == False:
+    with open("database2", "w") as database_file:
+        sysinfo_database = {}
+        database_file.write(json.dumps(sysinfo_database))
 
-    for x in range(0,len(var_names_list)): #попередньо очищаю комірки cpu_total... та інші перед початком виборки з БД
-        var_names_list[x] = 0
-
-    ckl_counter = 0
-    while ckl_counter < db_lines_count: #цикл виборки рядків з БД
-        data_string = database_file.readline()
-        data_string = data_string.translate(None,"[]") #позбуваюся квадратних душок на початку та кінці рядка (кращого способу поки не придумав)
-        data_string = data_string.split(",") #розбиваю рядок в список і заодно позбуваюся ком
-        for string_index,x in enumerate(data_string): #в даному циклі претворюю данні з списку в int та float та розфасовую по комірках CPU_total... і т.д.
-            try:
-                x = int(x)
-            except:
-                x = float(x)
-            var_names_list[string_index] = var_names_list[string_index] + x #сумую онотипні дані щоб в результаті отримати усереднене значення
-        ckl_counter += 1
-
-    database_file.close() #очищаю файл БД
-    database_file = open("database.txt", "w")
-    database_file.write("0"+"\n")
-    database_file.close()
-
-    for x in range(0,len(var_names_list)): #розділяю підсумовані значення на кількість зчитаних рядків (получаю усереднене значення)
-        var_names_list[x] = var_names_list[x] / db_lines_count
-    print (var_names_list)
-
+with open("database2", "r") as database_file:
+    data = database_file.read().strip()
+sysinfo_database = json.loads(data)
+sysdb_totalrecords = len(sysinfo_database) + 1
+sysinfo_database[str(sysdb_totalrecords)] = {
+    "record_time": systime_customformat,
+    "cpu_total": cpu_total,
+    "cpu_user": cpu_user,
+    "cpu_sys": cpu_sys,
+    "cpu_idle": cpu_idle,
+    "mem_total": mem_total,
+    "mem_used": mem_used,
+    "mem_free": mem_free,
+    "mem_cached": mem_cached,
+    "hdd_total": hdd_total,
+    "hdd_used": hdd_used,
+    "hdd_free": hdd_free
+}
+with open("database2", "w") as database_file:
+    database_file.write(json.dumps(sysinfo_database))
 
 ###############################################################################################################
-    mail = MIMEMultipart("alternative") #формую емайл
+
+if sysdb_totalrecords >= 4:  # check if batabase has enough records
+
+    for x in range(0, len(sysinfo_variables_names)):  # cleaning variables before data averaging
+        sysinfo_variables_names[x] = 0
+
+    sysdb_recordindex = sysdb_totalrecords
+    while sysdb_recordindex > 0:
+        for string_index, x in enumerate(sysinfo_database_keys):
+            x = sysinfo_database[str(sysdb_recordindex)][x]
+            x = float(x)
+            sysinfo_variables_names[string_index] += x
+        sysdb_recordindex -= 1
+
+    for x in range(0, len(sysinfo_variables_names)):  # averaging data
+        sysinfo_variables_names[x] /= sysdb_totalrecords
+    print (sysinfo_variables_names)
+
+    with open("database2", "w") as database_file:  # database clean
+        sysinfo_database = {}
+        database_file.write(json.dumps(sysinfo_database))
+
+    ###############################################################################################################
+    mail = MIMEMultipart("alternative")  # forming E-mail
     mail["Subject"] = "Test message"
     mail["From"] = "Python interpreter"
     mail["To"] = "To Lax-T"
 
-    #em_part1 = MIMEText(cpu_string+"\n"+hdd_string+"\n"+mem_string, "plain") тестовий рядок (вже непотрібен)
-
-                    #формую просту HTML таблицю, з шрифтами та кольором поки не заморочувався
     em_html = """
     <html>
         <head></head>
@@ -145,13 +139,14 @@ if db_lines_count >= 12: #перевіряю чи записана достат�
             </table>
         </body>
     </html>
-    """.format(str(cpu_total),str(cpu_user),str(cpu_sys),str(cpu_idle),str(mem_total),str(mem_used),str(mem_free),str(mem_cached),str(hdd_total),str(hdd_used),str(hdd_free))
+    """.format(str(cpu_total), str(cpu_user), str(cpu_sys), str(cpu_idle), str(mem_total), str(mem_used), str(mem_free),
+               str(mem_cached), str(hdd_total), str(hdd_used), str(hdd_free))
 
     em_part2 = MIMEText(em_html, "html")
     mail.attach(em_part2)
-                    #відправляю лист на свою електронку
+
     em_client = smtplib.SMTP_SSL("smtp.gmail.com", "465")
     em_client.ehlo()
-    em_client.login("irlml4313@gmail.com", "************") #пароль затертий
-    em_client.sendmail("irlml4313@gmail.com", "**********@gmail.com", mail.as_string()) #емейл затертий
+    em_client.login("irlml4313@gmail.com", "hardpass13101991")  # password deleted
+    em_client.sendmail("irlml4313@gmail.com", "laxtec@gmail.com", mail.as_string())  # e-mail deleted
     em_client.close()
