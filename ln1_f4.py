@@ -16,7 +16,6 @@ def get_sysresinfo(command):  # функція виконує консольну
     command_data = command_data.replace(",", ".")  # Заміна ком на крапки для коректного виконання float()
     return command_data.split()
 
-
 raw = get_sysresinfo("mpstat")  # обробка даних по завантаженості процесора
 cpu_user = float(raw[21])
 cpu_sys = 0
@@ -59,7 +58,7 @@ with open("database2", "r") as database_file:
 sysinfo_database = json.loads(data)
 sysdb_totalrecords = len(sysinfo_database) + 1
 sysinfo_database[str(sysdb_totalrecords)] = {
-    "record_time": systime_customformat,
+    "record_time": systime_customformat,  # saving time but not using at the moment (plan in future)
     "cpu_total": cpu_total,
     "cpu_user": cpu_user,
     "cpu_sys": cpu_sys,
