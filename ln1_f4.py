@@ -147,6 +147,6 @@ if sysdb_totalrecords >= 4:  # check if batabase has enough records
 
     em_client = smtplib.SMTP_SSL("smtp.gmail.com", "465")
     em_client.ehlo()
-    em_client.login("irlml4313@gmail.com", "hardpass13101991")  # password deleted
-    em_client.sendmail("irlml4313@gmail.com", "laxtec@gmail.com", mail.as_string())  # e-mail deleted
+    em_client.login("irlml4313@gmail.com", "**********")  # password deleted
+    em_client.sendmail("irlml4313@gmail.com", "*******@gmail.com", mail.as_string())  # e-mail deleted
     em_client.close()
