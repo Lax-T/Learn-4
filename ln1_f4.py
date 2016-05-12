@@ -10,80 +10,169 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import Encoders
-from email.mime.application import MIMEApplication
 from openpyxl import Workbook
 from openpyxl.styles import colors, Font, Border, Side
 
-database_file_name = "/home/lax/PycharmProjects/learn1/database3"
-xcel_table_name = "/home/lax/PycharmProjects/learn1/12 hour sys stats.xlsx"
+database_file_name = "/home/lax/PycharmProjects/learn1/database4"
+add_database_file_name = "/home/lax/PycharmProjects/learn1/add_database4"
+excel_table_name = "/home/lax/PycharmProjects/learn1/new method test.xlsx"
 
 
-def get_sysresinfo(command):  # функція виконує консольну команду та повертає результат
+def get_sysresinfo(command):  # Executes console command and returns data as list
     command_data = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
     (command_data, err) = command_data.communicate()
-    command_data = command_data.replace(",", ".")  # Заміна ком на крапки для коректного виконання float()
-    return command_data.split()
+    return command_data.replace(",", ".").split()
 
-raw = get_sysresinfo("mpstat")  # обробка даних по завантаженості процесора
-cpu_user = float(raw[21])
-cpu_sys = 0
-for x in raw[22:29]:
-    cpu_sys += float(x)
-cpu_total = cpu_user + cpu_sys
-cpu_idle = float(raw[30])
 
-raw = get_sysresinfo("free -m")  # обробка даних по завантаженості оперативної памяті
-mem_total = int(raw[7])
-mem_used = int(raw[8])
-mem_free = int(raw[9])
-mem_cached = int(raw[12])
+def get_cpu_info():  # return list format - cpu_user, cpu_sys, cpu_total, cpu_idle
+    cpu_usage_info = []
+    cpu_console_data = get_sysresinfo("mpstat")
+    cpu_usage_info.append(float(cpu_console_data[21]))
+    cpu_sys = 0
+    for x in cpu_console_data[22:29]:
+        cpu_sys += float(x)
+    cpu_usage_info.append(cpu_sys)
+    cpu_usage_info.append(cpu_usage_info[0] + cpu_usage_info[1])
+    cpu_usage_info.append(float(cpu_console_data[30]))
+    return cpu_usage_info
 
-raw = get_sysresinfo("df -m --total")  # обробка данних по жорсткому диску
-hdd_total = int(raw[50])
-hdd_used = int(raw[51])
-hdd_free = int(raw[52])
 
+def get_mem_info():  # return list format - mem_total, mem_used, mem_free, mem_cached
+    mem_usage_info = []
+    mem_console_data = get_sysresinfo("free -m")
+    mem_usage_info.append(int(mem_console_data[7]))
+    mem_usage_info.append(int(mem_console_data[8]))
+    mem_usage_info.append(int(mem_console_data[9]))
+    mem_usage_info.append(int(mem_console_data[12]))
+    return mem_usage_info
+
+
+def get_hdd_info():  # return list format - hdd_total, hdd_used, hdd_free
+    hdd_usage_info = []
+    hdd_console_data = get_sysresinfo("df -m --total")
+    hdd_usage_info.append(int(hdd_console_data[50]))
+    hdd_usage_info.append(int(hdd_console_data[51]))
+    hdd_usage_info.append(int(hdd_console_data[52]))
+    return hdd_usage_info
+
+system_usage_info = get_cpu_info() + get_mem_info() + get_hdd_info()
+print system_usage_info
 systime_customformat = datetime.datetime.now()
-systime_customformat = systime_customformat.strftime("%d,%m,%Y,%H,%M,%S")
-
-sysinfo_variables_names = [cpu_total, cpu_user, cpu_sys, cpu_idle, mem_total, mem_used, mem_free,
-                           mem_cached, hdd_total, hdd_used, hdd_free]
-sysinfo_database_keys = ["cpu_total", "cpu_user", "cpu_sys", "cpu_idle", "mem_total", "mem_used", "mem_free",
-                         "mem_cached", "hdd_total", "hdd_used", "hdd_free"]
+systime_customformat = systime_customformat.strftime("%Y,%m,%d,%H,%M,%S")
 
 ###############################################################################################################
 
-if os.path.isfile(database_file_name) == False:  # Adding new record into database
-    with open(database_file_name, "w") as database_file:
-        sysinfo_database = {"0": {
-            "email_send_hour": 24,
-            "emails_sent": 0
-        }}
-        database_file.write(json.dumps(sysinfo_database))
 
-with open(database_file_name, "r") as database_file:
-    data = database_file.read().strip()
-sysinfo_database = json.loads(data)
-sysdb_totalrecords = len(sysinfo_database)
-sysinfo_database[str(sysdb_totalrecords)] = {
-    "record_time": systime_customformat,
-    "cpu_total": cpu_total,
-    "cpu_user": cpu_user,
-    "cpu_sys": cpu_sys,
-    "cpu_idle": cpu_idle,
-    "mem_total": mem_total,
-    "mem_used": mem_used,
-    "mem_free": mem_free,
-    "mem_cached": mem_cached,
-    "hdd_total": hdd_total,
-    "hdd_used": hdd_used,
-    "hdd_free": hdd_free
-}
-with open(database_file_name, "w") as database_file:
-    database_file.write(json.dumps(sysinfo_database))
+class SysinfoDatabase(object):
+    def __init__(self, db_file_name):
+        self.db_file_name = db_file_name
+        if not os.path.isfile(self.db_file_name):
+            self.sysinfo_database = {}
+            with open(self.db_file_name, "w") as self.database_file:
+                self.database_file.write(json.dumps(self.sysinfo_database))
+            self.db_is_empty = True
 
-###############################################################################################################
-dynamic_html_table = """
+        else:
+            self.db_is_empty = False
+
+        with open(self.db_file_name, "r") as self.database_file:
+            self.sysinfo_database = self.database_file.read().strip()
+            self.sysinfo_database = json.loads(self.sysinfo_database)
+
+        self.database_keywords = self.sysinfo_database.keys()
+        self.database_keywords.sort(reverse=True)
+
+        self.lastrh = None  # Variable definitions
+        self.periods_averaged = None
+        self.select_result = None
+        self.averaging_period_result = None
+        self.records_in_period = None
+        self.single_record_data = None
+        self.averaged_in_period = 0
+        self.current_period_timestamp = None
+        self.temp = None
+        self.database_size = 0
+
+    def lastrecordhour(self):  # Returns hour of last record in database
+        self.lastrh = self.database_keywords[0]
+        return int(self.lastrh.split(",")[3])
+
+    def select(self, start=None, end=None, limit=12, groupbyhour=True):  # Select and average data from database
+        self.periods_averaged = 0
+        self.select_result = []
+        if self.db_is_empty:
+            return self.select_result, self.periods_averaged
+        if start is None:
+            start = self.database_keywords[0]
+        if end is None:
+            end = self.database_keywords[len(self.database_keywords)-1]
+
+        self.averaging_period_result = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        self.current_period_timestamp = None
+        self.averaged_in_period = 0
+        self.single_record_data = None
+
+        for current_key in self.database_keywords:
+            if start >= current_key >= end:
+                if self.current_period_timestamp is None:  # Setting up first avg period
+                    self.current_period_timestamp = current_key[0:13]
+
+                if groupbyhour:
+                    if self.current_period_timestamp != current_key[0:13]:
+                        for index in range(0, len(self.averaging_period_result)):  # Avg and Add data to sel. result
+                            self.averaging_period_result[index] /= self.averaged_in_period
+                        self.averaging_period_result += self.current_period_timestamp.split(",")
+                        self.select_result.append(self.averaging_period_result)
+                        self.periods_averaged += 1
+                        self.averaging_period_result = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                        self.averaged_in_period = 0
+                        if self.periods_averaged >= limit:
+                            break
+                        self.current_period_timestamp = current_key[0:13]
+
+                self.single_record_data = self.sysinfo_database[current_key]  # Summing average
+                for index, value in enumerate(self.single_record_data):
+                    self.averaging_period_result[index] += value
+                self.averaged_in_period += 1
+            else:
+                if current_key < end:
+                    break
+        if self.averaged_in_period != 0:
+            for index in range(0, len(self.averaging_period_result)):  # Avg and Add data to sel. result
+                self.averaging_period_result[index] /= self.averaged_in_period
+            self.averaging_period_result += self.current_period_timestamp.split(",")
+            self.select_result.append(self.averaging_period_result)
+            self.periods_averaged += 1
+        return self.select_result, self.periods_averaged
+
+    def new_record(self, timestamp, data):  # Adding new record into database
+        self.sysinfo_database[timestamp] = data
+        with open(self.db_file_name, "w") as self.database_file:
+            self.database_file.write(json.dumps(self.sysinfo_database))
+        self.database_keywords = self.sysinfo_database.keys()
+        self.database_keywords.sort(reverse=True)
+
+    def erase(self):  # Database full erase
+        self.sysinfo_database = {}
+        self.db_is_empty = True
+        with open(self.db_file_name, "w") as self.database_file:
+            self.database_file.write(json.dumps(self.sysinfo_database))
+
+    def clean(self, size_limit=500):  # Cleans database from old records (default is 500 record limit)
+        self.database_size = len(self.database_keywords)
+        while self.database_size > size_limit:
+            del self.sysinfo_database[self.database_keywords[self.database_size - 1]]
+            self.database_size -= 1
+        with open(self.db_file_name, "w") as self.database_file:
+            self.database_file.write(json.dumps(self.sysinfo_database))
+        self.database_keywords = self.sysinfo_database.keys()
+        self.database_keywords.sort(reverse=True)
+
+systeminfo_database = SysinfoDatabase(database_file_name)
+
+###################################################################################################################
+
+html_table = """
     <html>
         <head></head>
         <body>
@@ -92,10 +181,10 @@ dynamic_html_table = """
             """  # table start
 
 
-def extend_dynamic_table(edh_table):
-    edh_table += """
+def extend_html_table(e_html_table, table_data):
+    e_html_table += """
                 <tr>
-                    <td>Averaging period {11} {12}:00 - {12}:59</td>
+                    <td>Averaging period {13}.{12}.{11} {14}:00 - {14}:59</td>
                 </tr>
                 <tr>
                     <td>CPU</td>
@@ -106,24 +195,26 @@ def extend_dynamic_table(edh_table):
                 </tr>
                 <tr>
                     <td>Memory</td>
-                    <td>total:{4:.2f}</td>
-                    <td>used:{5:.2f}</td>
-                    <td>free:{6:.2f}</td>
-                    <td>cached:{7:.2f}</td>
+                    <td>total:{4:d}</td>
+                    <td>used:{5:d}</td>
+                    <td>free:{6:d}</td>
+                    <td>cached:{7:d}</td>
                 </tr>
                 <tr>
                     <td>Hard disk drive</td>
-                    <td>total:{8:.2f}</td>
-                    <td>used:{9:.2f}</td>
-                    <td>free:{10:.2f}</td>
+                    <td>total:{8:d}</td>
+                    <td>used:{9:d}</td>
+                    <td>free:{10:d}</td>
                 </tr>
-    """.format(sysinfo_variables_names[0], sysinfo_variables_names[1], sysinfo_variables_names[2],
-               sysinfo_variables_names[3], sysinfo_variables_names[4], sysinfo_variables_names[5],
-               sysinfo_variables_names[6], sysinfo_variables_names[7], sysinfo_variables_names[8],
-               sysinfo_variables_names[9], sysinfo_variables_names[10], str(averaging_period_date),
-               str(averaging_period_time))
+    """.format(table_data[0], table_data[1], table_data[2],
+               table_data[3], table_data[4], table_data[5],
+               table_data[6], table_data[7], table_data[8],
+               table_data[9], table_data[10], table_data[11],
+               table_data[12], table_data[13], table_data[14])
 
-    return edh_table
+    return e_html_table
+
+#######################################################################################################################
 
 
 class ExcelTable(object):
@@ -182,17 +273,15 @@ class ExcelTable(object):
         self.row3_data = []
         self.row4_data = []
 
-    def table_data_update(self):
-        self.row1_data = ["Averaging period " + str(averaging_period_date) + " " + str(averaging_period_time) +
-                          ":00 - " + str(averaging_period_time) + ":59", "", "", "", ""]
-        self.row2_data = ["CPU", "total: %.2f" % (sysinfo_variables_names[0]), "user: %.2f" %
-                          (sysinfo_variables_names[1]), "system: %.2f" % (sysinfo_variables_names[2]),
-                          "idle: %.2f" % (sysinfo_variables_names[3])]
-        self.row3_data = ["Memory", "total: %.2f" % (sysinfo_variables_names[4]), "used: %.2f" %
-                          (sysinfo_variables_names[5]), "free: %.2f" % (sysinfo_variables_names[6]),
-                          "cached: %.2f" % (sysinfo_variables_names[7])]
-        self.row4_data = ["Hard disk drive", "total: %d" % (sysinfo_variables_names[8]),
-                          "used: %d" % (sysinfo_variables_names[9]), "free: %d" % (sysinfo_variables_names[10]), ""]
+    def table_data_update(self, table_data):
+        self.row1_data = ["Averaging period %s.%s.%s %s:00 - %s:59" % (table_data[13], table_data[12], table_data[11],
+                                                                       table_data[14], table_data[14]), "", "", "", ""]
+        self.row2_data = ["CPU", "total: %.2f" % (table_data[0]), "user: %.2f" % (table_data[1]), "system: %.2f"
+                          % (table_data[2]), "idle: %.2f" % (table_data[3])]
+        self.row3_data = ["Memory", "total: %d" % (table_data[4]), "used: %d"
+                          % (table_data[5]), "free: %d" % (table_data[6]), "cached: %d" % (table_data[7])]
+        self.row4_data = ["Hard disk drive", "total: %d" % (table_data[8]), "used: %d"
+                          % (table_data[9]), "free: %d" % (table_data[10]), ""]
 
     def extend_helper(self, exthe_row_data, exthe_border_style, exthe_first_col_font):
         self.table_row_index += 1
@@ -205,8 +294,8 @@ class ExcelTable(object):
             else:
                 self.active_cell.font = self.black_font
 
-    def extend(self):
-        self.table_data_update()  # Update table variables
+    def extend(self, table_data):
+        self.table_data_update(table_data)  # Update table variables
         self.extend_helper(self.row1_data, self.toprow_border_style, self.blue_font)
         self.extend_helper(self.row2_data, self.middlerow_border_style, self.red_font)
         self.extend_helper(self.row3_data, self.middlerow_border_style, self.red_font)
@@ -222,94 +311,78 @@ class ExcelTable(object):
         self.new_worksheet.column_dimensions["F"].width = 15
         self.new_workbook.save(filename)
 
-
-def get_db_record_datetime(index):
-    datetime_combine = sysinfo_database[str(index)]["record_time"].split(",")
-    date_astext = "%s:%s:%s" % (str(datetime_combine[0]), str(datetime_combine[1]), str(datetime_combine[2]))
-    time = datetime_combine[3]
-    return date_astext, time
+#######################################################################################################################
 
 
-def get_db_record_time(index):
-    datetime_combine = sysinfo_database[str(index)]["record_time"].split(",")
-    return datetime_combine[3]
+def send_email(attach_table, excel_file):
+    mail = MIMEMultipart()
+    mail["Subject"] = "Test message new select"
+    mail["From"] = "Python interpreter"
+    mail["To"] = "To Lax-T"
 
-email_send_hour = sysinfo_database["0"]["email_send_hour"]
-emails_sent_counter = sysinfo_database["0"]["emails_sent"]
-system_time_hour = systime_customformat.split(",")[3]
-new_Excel_Table = ExcelTable()
+    em_table_part = MIMEText(attach_table, "html")
 
-if sysdb_totalrecords >= 4 and email_send_hour != system_time_hour:  # check if batabase has enough records
-    sysdb_recordindex = sysdb_totalrecords - 1  # setting up record index for database addressing
-    htmltable_lenght_counter = 0
-    exceltable_lenght_counter = 0
-    next_record_time = get_db_record_time(sysdb_recordindex)
+    if excel_file is not None:
+        em_excel_file = MIMEBase("application", "octet-stream")
+        with open(excel_file, "rb") as ef:
+            em_excel_file.set_payload(ef.read())
+            Encoders.encode_base64(em_excel_file)
+        em_excel_file.add_header('Content-Disposition', 'attachment', filename="stats.xlsx")
+        mail.attach(em_excel_file)
 
-    while sysdb_recordindex > 0 and (htmltable_lenght_counter < 5 or
-                                         (exceltable_lenght_counter < 12 and emails_sent_counter >= 11)):
-        averaging_period_date, averaging_period_time = get_db_record_datetime(sysdb_recordindex)
-        for x in range(0, len(sysinfo_variables_names)):  # cleaning variables before data averaging
-            sysinfo_variables_names[x] = 0
-        records_averaged = 0
+    mail.attach(em_table_part)
+    em_client = smtplib.SMTP_SSL("smtp.gmail.com", "465")
+    em_client.ehlo()
+    em_client.login("****@gmail.com", "****")  # password deleted
+    em_client.sendmail("****@gmail.com", "****@gmail.com", mail.as_string())  # e-mail deleted
+    em_client.close()
 
-        while averaging_period_time == next_record_time:
-            for string_index, x in enumerate(sysinfo_database_keys):
-                x = sysinfo_database[str(sysdb_recordindex)][x]
-                x = float(x)
-                sysinfo_variables_names[string_index] += x
-            records_averaged += 1
-            sysdb_recordindex -= 1
-            if sysdb_recordindex < 1:
-                break
-            next_record_time = get_db_record_time(sysdb_recordindex)
+######################################################################################################################
 
-        for x in range(0, len(sysinfo_variables_names)):  # averaging data
-            sysinfo_variables_names[x] /= records_averaged
+select_result, periods_in_sel_result = systeminfo_database.select()
 
-        if htmltable_lenght_counter < 5:
-            dynamic_html_table = extend_dynamic_table(dynamic_html_table)
-            htmltable_lenght_counter += 1
+if not os.path.isfile(add_database_file_name):  # Check if additional database exists
+    with open(add_database_file_name, "w") as additional_database_file:
+        additional_database = {"last_em_send_hour": 24,
+                               "emails_sent": 0}
+        additional_database_file.write(json.dumps(additional_database))
 
-        if emails_sent_counter >= 11:
-            new_Excel_Table.extend()
-            exceltable_lenght_counter += 1
+with open(add_database_file_name, "r") as additional_database_file:
+    additional_database = additional_database_file.read().strip()
+    additional_database = json.loads(additional_database)
+last_em_send_hour = additional_database["last_em_send_hour"]
+emails_sent = additional_database["emails_sent"]
+current_system_hour = int(systime_customformat.split(",")[3])
 
-    dynamic_html_table += """
+if last_em_send_hour != current_system_hour+1:  # check if averaging period changed and need to send email
+    index = 0
+    while index < periods_in_sel_result and index < 5:  # 5 - table size limit
+        html_table = extend_html_table(html_table, select_result[index])
+        index += 1
+    html_table += """
                 </tr>
             </table>
         </body>
     </html>
-    """  # end (close) table
+    """
+    if emails_sent >= 11:  # 11 - is to include excel table in every 12th email (every 12 hours)
+        new_excel_table = ExcelTable()
+        index = 0
+        while index < periods_in_sel_result and index < 12:  # 12 - table size limit
+            new_excel_table.extend(select_result[index])
+            index += 1
+        new_excel_table.save(excel_table_name)
+        send_email(html_table, excel_table_name)
+        emails_sent = 0
 
-    mail = MIMEMultipart()  # forming E-mail
-    mail["Subject"] = "Test message"
-    mail["From"] = "Python interpreter"
-    mail["To"] = "To Lax-T"
-
-    if emails_sent_counter >= 11:  # check if attachment and counter reset is needed
-        emails_sent_counter = 0
-        new_Excel_Table.save(xcel_table_name)
-        em_file1 = MIMEBase("application", "octet-stream")
-        with open(xcel_table_name, "rb") as fp:
-            em_file1.set_payload(fp.read())
-            Encoders.encode_base64(em_file1)
-
-        em_file1.add_header('Content-Disposition', 'attachment', filename="stats.xlsx")
-        mail.attach(em_file1)
     else:
-        emails_sent_counter += 1
+        send_email(html_table, None)
+        emails_sent += 1
 
-    sysinfo_database["0"] = {
-        "email_send_hour": system_time_hour,
-        "emails_sent": emails_sent_counter
-    }
-    with open(database_file_name, "w") as database_file:
-        database_file.write(json.dumps(sysinfo_database))
+    additional_database["emails_sent"] = emails_sent
+    additional_database["last_em_send_hour"] = current_system_hour
+    with open(add_database_file_name, "w") as additional_database_file:
+        additional_database_file.write(json.dumps(additional_database))
 
-    em_part2 = MIMEText(dynamic_html_table, "html")
-    mail.attach(em_part2)
-    em_client = smtplib.SMTP_SSL("smtp.gmail.com", "465")
-    em_client.ehlo()
-    em_client.login("irlml4313@gmail.com", "*******")  # password deleted
-    em_client.sendmail("irlml4313@gmail.com", "*******@gmail.com", mail.as_string())  # e-mail deleted
-    em_client.close()
+systeminfo_database.new_record(systime_customformat, system_usage_info)
+systeminfo_database.clean()
