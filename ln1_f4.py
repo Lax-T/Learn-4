@@ -10,55 +10,46 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import Encoders
+
 from openpyxl import Workbook
 from openpyxl.styles import colors, Font, Border, Side
 
-database_file_name = "/home/lax/PycharmProjects/learn1/database4"
-add_database_file_name = "/home/lax/PycharmProjects/learn1/add_database4"
-excel_table_name = "/home/lax/PycharmProjects/learn1/new method test.xlsx"
+DATABASE_FILE_NAME = '/home/lax/PycharmProjects/learn1/database4'
+ADD_DATABASE_FILE_NAME = '/home/lax/PycharmProjects/learn1/add_database4'
+EXCEL_TABLE_NAME = '/home/lax/PycharmProjects/learn1/new method test.xlsx'
+SENDER_EADRESS = '***@gmail.com'
+SENDER_EPASSWORD = '***'
+RECEIVER_EADRESS = '***@gmail.com'
 
 
-def get_sysresinfo(command):  # Executes console command and returns data as list
+def get_sysresinfo(command):
+    """ Executes console command and returns data as list """
     command_data = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
-    (command_data, err) = command_data.communicate()
-    return command_data.replace(",", ".").split()
+    command_data, error_data = command_data.communicate()
+    return command_data.replace(',', '.').split()
 
 
 def get_cpu_info():  # return list format - cpu_user, cpu_sys, cpu_total, cpu_idle
-    cpu_usage_info = []
-    cpu_console_data = get_sysresinfo("mpstat")
-    cpu_usage_info.append(float(cpu_console_data[21]))
-    cpu_sys = 0
-    for x in cpu_console_data[22:29]:
-        cpu_sys += float(x)
-    cpu_usage_info.append(cpu_sys)
-    cpu_usage_info.append(cpu_usage_info[0] + cpu_usage_info[1])
-    cpu_usage_info.append(float(cpu_console_data[30]))
-    return cpu_usage_info
+    cpu_console_data = get_sysresinfo('mpstat')
+    cpu_user = float(cpu_console_data[21])
+    cpu_sys = sum(float(x) for x in cpu_console_data[22:29])
+    cpu_total = cpu_user + cpu_sys
+    cpu_idle = float(cpu_console_data[30])
+    return [cpu_user, cpu_sys, cpu_total, cpu_idle]
 
 
 def get_mem_info():  # return list format - mem_total, mem_used, mem_free, mem_cached
-    mem_usage_info = []
-    mem_console_data = get_sysresinfo("free -m")
-    mem_usage_info.append(int(mem_console_data[7]))
-    mem_usage_info.append(int(mem_console_data[8]))
-    mem_usage_info.append(int(mem_console_data[9]))
-    mem_usage_info.append(int(mem_console_data[12]))
-    return mem_usage_info
+    mem_console_data = get_sysresinfo('free -m')
+    mem_total, mem_used = int(mem_console_data[7]), int(mem_console_data[8])
+    mem_free, mem_cached = int(mem_console_data[9]), int(mem_console_data[12])
+    return [mem_total, mem_used, mem_free, mem_cached]
 
 
 def get_hdd_info():  # return list format - hdd_total, hdd_used, hdd_free
-    hdd_usage_info = []
-    hdd_console_data = get_sysresinfo("df -m --total")
-    hdd_usage_info.append(int(hdd_console_data[50]))
-    hdd_usage_info.append(int(hdd_console_data[51]))
-    hdd_usage_info.append(int(hdd_console_data[52]))
-    return hdd_usage_info
-
-system_usage_info = get_cpu_info() + get_mem_info() + get_hdd_info()
-print system_usage_info
-systime_customformat = datetime.datetime.now()
-systime_customformat = systime_customformat.strftime("%Y,%m,%d,%H,%M,%S")
+    hdd_console_data = get_sysresinfo('df -m --total')
+    hdd_total, hdd_used = int(hdd_console_data[50]), int(hdd_console_data[51])
+    hdd_free = int(hdd_console_data[52])
+    return [hdd_total, hdd_used, hdd_free]
 
 ###############################################################################################################
 
@@ -68,14 +59,14 @@ class SysinfoDatabase(object):
         self.db_file_name = db_file_name
         if not os.path.isfile(self.db_file_name):
             self.sysinfo_database = {}
-            with open(self.db_file_name, "w") as self.database_file:
+            with open(self.db_file_name, 'w') as self.database_file:
                 self.database_file.write(json.dumps(self.sysinfo_database))
             self.db_is_empty = True
 
         else:
             self.db_is_empty = False
 
-        with open(self.db_file_name, "r") as self.database_file:
+        with open(self.db_file_name, 'r') as self.database_file:
             self.sysinfo_database = self.database_file.read().strip()
             self.sysinfo_database = json.loads(self.sysinfo_database)
 
@@ -93,9 +84,9 @@ class SysinfoDatabase(object):
         self.temp = None
         self.database_size = 0
 
-    def lastrecordhour(self):  # Returns hour of last record in database
+    def get_last_record_hour(self):  # Returns hour of last record in database
         self.lastrh = self.database_keywords[0]
-        return int(self.lastrh.split(",")[3])
+        return int(self.lastrh.split(',')[3])
 
     def select(self, start=None, end=None, limit=12, groupbyhour=True):  # Select and average data from database
         self.periods_averaged = 0
@@ -121,7 +112,7 @@ class SysinfoDatabase(object):
                     if self.current_period_timestamp != current_key[0:13]:
                         for index in range(0, len(self.averaging_period_result)):  # Avg and Add data to sel. result
                             self.averaging_period_result[index] /= self.averaged_in_period
-                        self.averaging_period_result += self.current_period_timestamp.split(",")
+                        self.averaging_period_result += self.current_period_timestamp.split(',')
                         self.select_result.append(self.averaging_period_result)
                         self.periods_averaged += 1
                         self.averaging_period_result = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -140,14 +131,14 @@ class SysinfoDatabase(object):
         if self.averaged_in_period != 0:
             for index in range(0, len(self.averaging_period_result)):  # Avg and Add data to sel. result
                 self.averaging_period_result[index] /= self.averaged_in_period
-            self.averaging_period_result += self.current_period_timestamp.split(",")
+            self.averaging_period_result += self.current_period_timestamp.split(',')
             self.select_result.append(self.averaging_period_result)
             self.periods_averaged += 1
         return self.select_result, self.periods_averaged
 
     def new_record(self, timestamp, data):  # Adding new record into database
         self.sysinfo_database[timestamp] = data
-        with open(self.db_file_name, "w") as self.database_file:
+        with open(self.db_file_name, 'w') as self.database_file:
             self.database_file.write(json.dumps(self.sysinfo_database))
         self.database_keywords = self.sysinfo_database.keys()
         self.database_keywords.sort(reverse=True)
@@ -155,7 +146,7 @@ class SysinfoDatabase(object):
     def erase(self):  # Database full erase
         self.sysinfo_database = {}
         self.db_is_empty = True
-        with open(self.db_file_name, "w") as self.database_file:
+        with open(self.db_file_name, 'w') as self.database_file:
             self.database_file.write(json.dumps(self.sysinfo_database))
 
     def clean(self, size_limit=500):  # Cleans database from old records (default is 500 record limit)
@@ -163,22 +154,22 @@ class SysinfoDatabase(object):
         while self.database_size > size_limit:
             del self.sysinfo_database[self.database_keywords[self.database_size - 1]]
             self.database_size -= 1
-        with open(self.db_file_name, "w") as self.database_file:
+        with open(self.db_file_name, 'w') as self.database_file:
             self.database_file.write(json.dumps(self.sysinfo_database))
         self.database_keywords = self.sysinfo_database.keys()
         self.database_keywords.sort(reverse=True)
 
-systeminfo_database = SysinfoDatabase(database_file_name)
-
 ###################################################################################################################
 
-html_table = """
+
+def start_html_table():
+    return """
     <html>
         <head></head>
         <body>
             <h1>System hour usage stats</h1>
-            <table border = "1">
-            """  # table start
+            <table border = '1'>
+            """
 
 
 def extend_html_table(e_html_table, table_data):
@@ -214,7 +205,16 @@ def extend_html_table(e_html_table, table_data):
 
     return e_html_table
 
-#######################################################################################################################
+
+def end_html_table(e_html_table):
+    return e_html_table + """
+                </tr>
+            </table>
+        </body>
+    </html>
+    """
+
+######################################################################################################################
 
 
 class ExcelTable(object):
@@ -224,41 +224,41 @@ class ExcelTable(object):
         self.black_font = Font(color=colors.BLACK)
         self.blue_font = Font(color=colors.BLUE)
         self.red_font = Font(color=colors.RED)
-        self.border_allthin = Border(left=Side(border_style="thin", color=colors.BLACK),
-                                     right=Side(border_style="thin", color=colors.BLACK),
-                                     bottom=Side(border_style="thin", color=colors.BLACK),
-                                     top=Side(border_style="thin", color=colors.BLACK))
-        self.border_LTthik = Border(left=Side(border_style="thick", color=colors.BLACK),
-                                    bottom=Side(border_style="thin", color=colors.BLACK),
-                                    top=Side(border_style="thick", color=colors.BLACK))
-        self.border_Tthik = Border(bottom=Side(border_style="thin", color=colors.BLACK),
-                                   top=Side(border_style="thick", color=colors.BLACK))
-        self.border_TRthik = Border(right=Side(border_style="thick", color=colors.BLACK),
-                                    bottom=Side(border_style="thin", color=colors.BLACK),
-                                    top=Side(border_style="thick", color=colors.BLACK))
-        self.border_Lthik = Border(left=Side(border_style="thick", color=colors.BLACK),
-                                   right=Side(border_style="thin", color=colors.BLACK),
-                                   bottom=Side(border_style="thin", color=colors.BLACK),
-                                   top=Side(border_style="thin", color=colors.BLACK))
-        self.border_Rthik = Border(left=Side(border_style="thin", color=colors.BLACK),
-                                   right=Side(border_style="thick", color=colors.BLACK),
-                                   bottom=Side(border_style="thin", color=colors.BLACK),
-                                   top=Side(border_style="thin", color=colors.BLACK))
-        self.border_LBthik = Border(left=Side(border_style="thick", color=colors.BLACK),
-                                    right=Side(border_style="thin", color=colors.BLACK),
-                                    bottom=Side(border_style="thick", color=colors.BLACK),
-                                    top=Side(border_style="thin", color=colors.BLACK))
-        self.border_Bthik = Border(left=Side(border_style="thin", color=colors.BLACK),
-                                   right=Side(border_style="thin", color=colors.BLACK),
-                                   bottom=Side(border_style="thick", color=colors.BLACK),
-                                   top=Side(border_style="thin", color=colors.BLACK))
-        self.border_BRthik = Border(left=Side(border_style="thin", color=colors.BLACK),
-                                    right=Side(border_style="thick", color=colors.BLACK),
-                                    bottom=Side(border_style="thick", color=colors.BLACK),
-                                    top=Side(border_style="thin", color=colors.BLACK))
+        self.border_allthin = Border(left=Side(border_style='thin', color=colors.BLACK),
+                                     right=Side(border_style='thin', color=colors.BLACK),
+                                     bottom=Side(border_style='thin', color=colors.BLACK),
+                                     top=Side(border_style='thin', color=colors.BLACK))
+        self.border_LTthik = Border(left=Side(border_style='thick', color=colors.BLACK),
+                                    bottom=Side(border_style='thin', color=colors.BLACK),
+                                    top=Side(border_style='thick', color=colors.BLACK))
+        self.border_Tthik = Border(bottom=Side(border_style='thin', color=colors.BLACK),
+                                   top=Side(border_style='thick', color=colors.BLACK))
+        self.border_TRthik = Border(right=Side(border_style='thick', color=colors.BLACK),
+                                    bottom=Side(border_style='thin', color=colors.BLACK),
+                                    top=Side(border_style='thick', color=colors.BLACK))
+        self.border_Lthik = Border(left=Side(border_style='thick', color=colors.BLACK),
+                                   right=Side(border_style='thin', color=colors.BLACK),
+                                   bottom=Side(border_style='thin', color=colors.BLACK),
+                                   top=Side(border_style='thin', color=colors.BLACK))
+        self.border_Rthik = Border(left=Side(border_style='thin', color=colors.BLACK),
+                                   right=Side(border_style='thick', color=colors.BLACK),
+                                   bottom=Side(border_style='thin', color=colors.BLACK),
+                                   top=Side(border_style='thin', color=colors.BLACK))
+        self.border_LBthik = Border(left=Side(border_style='thick', color=colors.BLACK),
+                                    right=Side(border_style='thin', color=colors.BLACK),
+                                    bottom=Side(border_style='thick', color=colors.BLACK),
+                                    top=Side(border_style='thin', color=colors.BLACK))
+        self.border_Bthik = Border(left=Side(border_style='thin', color=colors.BLACK),
+                                   right=Side(border_style='thin', color=colors.BLACK),
+                                   bottom=Side(border_style='thick', color=colors.BLACK),
+                                   top=Side(border_style='thin', color=colors.BLACK))
+        self.border_BRthik = Border(left=Side(border_style='thin', color=colors.BLACK),
+                                    right=Side(border_style='thick', color=colors.BLACK),
+                                    bottom=Side(border_style='thick', color=colors.BLACK),
+                                    top=Side(border_style='thin', color=colors.BLACK))
 
         self.active_cell = self.new_worksheet.cell(row=2, column=2)
-        self.active_cell.value = "System 12 hour usage stats"
+        self.active_cell.value = 'System 12 hour usage stats'
         self.active_cell.font = Font(color=colors.GREEN, italic=True, size=16)
         self.table_row_index = 2
 
@@ -274,14 +274,14 @@ class ExcelTable(object):
         self.row4_data = []
 
     def table_data_update(self, table_data):
-        self.row1_data = ["Averaging period %s.%s.%s %s:00 - %s:59" % (table_data[13], table_data[12], table_data[11],
-                                                                       table_data[14], table_data[14]), "", "", "", ""]
-        self.row2_data = ["CPU", "total: %.2f" % (table_data[0]), "user: %.2f" % (table_data[1]), "system: %.2f"
-                          % (table_data[2]), "idle: %.2f" % (table_data[3])]
-        self.row3_data = ["Memory", "total: %d" % (table_data[4]), "used: %d"
-                          % (table_data[5]), "free: %d" % (table_data[6]), "cached: %d" % (table_data[7])]
-        self.row4_data = ["Hard disk drive", "total: %d" % (table_data[8]), "used: %d"
-                          % (table_data[9]), "free: %d" % (table_data[10]), ""]
+        self.row1_data = ['Averaging period %s.%s.%s %s:00 - %s:59' % (table_data[13], table_data[12], table_data[11],
+                                                                       table_data[14], table_data[14]), '', '', '', '']
+        self.row2_data = ['CPU', 'total: %.2f' % (table_data[0]), 'user: %.2f' % (table_data[1]), 'system: %.2f'
+                          % (table_data[2]), 'idle: %.2f' % (table_data[3])]
+        self.row3_data = ['Memory', 'total: %d' % (table_data[4]), 'used: %d'
+                          % (table_data[5]), 'free: %d' % (table_data[6]), 'cached: %d' % (table_data[7])]
+        self.row4_data = ['Hard disk drive', 'total: %d' % (table_data[8]), 'used: %d'
+                          % (table_data[9]), 'free: %d' % (table_data[10]), '']
 
     def extend_helper(self, exthe_row_data, exthe_border_style, exthe_first_col_font):
         self.table_row_index += 1
@@ -303,86 +303,104 @@ class ExcelTable(object):
 
     def save(self, filename):
         self.new_worksheet.row_dimensions[2].height = 20
-        self.new_worksheet.column_dimensions["A"].width = 5
-        self.new_worksheet.column_dimensions["B"].width = 18
-        self.new_worksheet.column_dimensions["C"].width = 15
-        self.new_worksheet.column_dimensions["D"].width = 15
-        self.new_worksheet.column_dimensions["E"].width = 15
-        self.new_worksheet.column_dimensions["F"].width = 15
+        self.new_worksheet.column_dimensions['A'].width = 5
+        self.new_worksheet.column_dimensions['B'].width = 18
+        self.new_worksheet.column_dimensions['C'].width = 15
+        self.new_worksheet.column_dimensions['D'].width = 15
+        self.new_worksheet.column_dimensions['E'].width = 15
+        self.new_worksheet.column_dimensions['F'].width = 15
         self.new_workbook.save(filename)
 
 #######################################################################################################################
 
 
-def send_email(attach_table, excel_file):
+def send_email(attach_table, excel_file, sender_adress, sender_pass, receiver_adress):
     mail = MIMEMultipart()
-    mail["Subject"] = "Test message new select"
-    mail["From"] = "Python interpreter"
-    mail["To"] = "To Lax-T"
+    mail['Subject'] = 'Test message new select'
+    mail['From'] = 'Python interpreter'
+    mail['To'] = 'To Lax-T'
 
-    em_table_part = MIMEText(attach_table, "html")
+    em_table_part = MIMEText(attach_table, 'html')
 
     if excel_file is not None:
-        em_excel_file = MIMEBase("application", "octet-stream")
-        with open(excel_file, "rb") as ef:
+        em_excel_file = MIMEBase('application', 'octet-stream')
+        with open(excel_file, 'rb') as ef:
             em_excel_file.set_payload(ef.read())
             Encoders.encode_base64(em_excel_file)
-        em_excel_file.add_header('Content-Disposition', 'attachment', filename="stats.xlsx")
+        em_excel_file.add_header('Content-Disposition', 'attachment', filename='stats.xlsx')
         mail.attach(em_excel_file)
 
     mail.attach(em_table_part)
-    em_client = smtplib.SMTP_SSL("smtp.gmail.com", "465")
+    em_client = smtplib.SMTP_SSL('smtp.gmail.com', '465')
     em_client.ehlo()
-    em_client.login("****@gmail.com", "****")  # password deleted
-    em_client.sendmail("****@gmail.com", "****@gmail.com", mail.as_string())  # e-mail deleted
+    em_client.login(sender_adress, sender_pass)  # password deleted
+    em_client.sendmail(sender_adress, receiver_adress, mail.as_string())  # e-mail deleted
     em_client.close()
 
 ######################################################################################################################
 
-select_result, periods_in_sel_result = systeminfo_database.select()
 
-if not os.path.isfile(add_database_file_name):  # Check if additional database exists
-    with open(add_database_file_name, "w") as additional_database_file:
-        additional_database = {"last_em_send_hour": 24,
-                               "emails_sent": 0}
-        additional_database_file.write(json.dumps(additional_database))
-
-with open(add_database_file_name, "r") as additional_database_file:
-    additional_database = additional_database_file.read().strip()
-    additional_database = json.loads(additional_database)
-last_em_send_hour = additional_database["last_em_send_hour"]
-emails_sent = additional_database["emails_sent"]
-current_system_hour = int(systime_customformat.split(",")[3])
-
-if last_em_send_hour != current_system_hour+1:  # check if averaging period changed and need to send email
-    index = 0
-    while index < periods_in_sel_result and index < 5:  # 5 - table size limit
-        html_table = extend_html_table(html_table, select_result[index])
-        index += 1
-    html_table += """
-                </tr>
-            </table>
-        </body>
-    </html>
-    """
-    if emails_sent >= 11:  # 11 - is to include excel table in every 12th email (every 12 hours)
-        new_excel_table = ExcelTable()
-        index = 0
-        while index < periods_in_sel_result and index < 12:  # 12 - table size limit
-            new_excel_table.extend(select_result[index])
-            index += 1
-        new_excel_table.save(excel_table_name)
-        send_email(html_table, excel_table_name)
-        emails_sent = 0
+def load_additionad_database(adb_file_name):
+    if os.path.isfile(adb_file_name):  # Check if additional database exists
+        with open(adb_file_name, 'r') as a_database_file:
+            a_database = a_database_file.read().strip()
+            a_database = json.loads(a_database)
+        return a_database
 
     else:
-        send_email(html_table, None)
-        emails_sent += 1
+        with open(adb_file_name, 'w') as a_database_file:
+            a_database = {'last_em_send_hour': 24,
+                          'emails_sent': 0}
+            a_database_file.write(json.dumps(a_database))
+        return a_database
 
-    additional_database["emails_sent"] = emails_sent
-    additional_database["last_em_send_hour"] = current_system_hour
-    with open(add_database_file_name, "w") as additional_database_file:
-        additional_database_file.write(json.dumps(additional_database))
 
-systeminfo_database.new_record(systime_customformat, system_usage_info)
-systeminfo_database.clean()
+def update_additional_database(adb_file_name, a_database):
+    with open(adb_file_name, 'w') as a_database_file:
+        a_database_file.write(json.dumps(a_database))
+
+######################################################################################################################
+
+if __name__ == '__main__':
+    system_usage_info = get_cpu_info() + get_mem_info() + get_hdd_info()
+    print system_usage_info
+    systime_customformat = datetime.datetime.now()
+    systime_customformat = systime_customformat.strftime('%Y,%m,%d,%H,%M,%S')
+
+    systeminfo_database = SysinfoDatabase(DATABASE_FILE_NAME)
+
+    select_result, periods_in_sel_result = systeminfo_database.select()
+
+    additional_database = load_additionad_database(ADD_DATABASE_FILE_NAME)
+    last_em_send_hour = additional_database['last_em_send_hour']
+    emails_sent = additional_database['emails_sent']
+    current_system_hour = int(systime_customformat.split(',')[3])
+
+    html_table = start_html_table()
+
+    if last_em_send_hour != current_system_hour+1:  # check if averaging period changed and need to send email
+        index = 0
+        while index < periods_in_sel_result and index < 5:  # 5 - table size limit
+            html_table = extend_html_table(html_table, select_result[index])
+            index += 1
+        html_table = end_html_table(html_table)
+        if emails_sent >= 11:  # 11 - is to include excel table in every 12th email (every 12 hours)
+            new_excel_table = ExcelTable()
+            index = 0
+            while index < periods_in_sel_result and index < 12:  # 12 - table size limit
+                new_excel_table.extend(select_result[index])
+                index += 1
+            new_excel_table.save(EXCEL_TABLE_NAME)
+            send_email(html_table, EXCEL_TABLE_NAME, SENDER_EADRESS, SENDER_EPASSWORD, RECEIVER_EADRESS)
+            emails_sent = 0
+
+        else:
+            send_email(html_table, None, SENDER_EADRESS, SENDER_EPASSWORD, RECEIVER_EADRESS)
+            emails_sent += 1
+
+        additional_database['emails_sent'] = emails_sent
+        additional_database['last_em_send_hour'] = current_system_hour
+        update_additional_database(ADD_DATABASE_FILE_NAME, additional_database)
+
+    systeminfo_database.new_record(systime_customformat, system_usage_info)
+    systeminfo_database.clean()
