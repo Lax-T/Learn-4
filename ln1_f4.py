@@ -333,8 +333,8 @@ def send_email(attach_table, excel_file, sender_adress, sender_pass, receiver_ad
     mail.attach(em_table_part)
     em_client = smtplib.SMTP_SSL('smtp.gmail.com', '465')
     em_client.ehlo()
-    em_client.login(sender_adress, sender_pass)  # password deleted
-    em_client.sendmail(sender_adress, receiver_adress, mail.as_string())  # e-mail deleted
+    em_client.login(sender_adress, sender_pass)
+    em_client.sendmail(sender_adress, receiver_adress, mail.as_string())
     em_client.close()
 
 ######################################################################################################################
