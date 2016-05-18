@@ -29,7 +29,7 @@ def get_sysresinfo(command):
     return command_data.replace(',', '.').split()
 
 
-def get_cpu_info():  # return list format - cpu_user, cpu_sys, cpu_total, cpu_idle
+def get_cpu_info():
     cpu_console_data = get_sysresinfo('mpstat')
     cpu_user = float(cpu_console_data[21])
     cpu_sys = sum(float(x) for x in cpu_console_data[22:29])
@@ -38,14 +38,14 @@ def get_cpu_info():  # return list format - cpu_user, cpu_sys, cpu_total, cpu_id
     return [cpu_user, cpu_sys, cpu_total, cpu_idle]
 
 
-def get_mem_info():  # return list format - mem_total, mem_used, mem_free, mem_cached
+def get_mem_info():
     mem_console_data = get_sysresinfo('free -m')
     mem_total, mem_used = int(mem_console_data[7]), int(mem_console_data[8])
     mem_free, mem_cached = int(mem_console_data[9]), int(mem_console_data[12])
     return [mem_total, mem_used, mem_free, mem_cached]
 
 
-def get_hdd_info():  # return list format - hdd_total, hdd_used, hdd_free
+def get_hdd_info():
     hdd_console_data = get_sysresinfo('df -m --total')
     hdd_total, hdd_used = int(hdd_console_data[50]), int(hdd_console_data[51])
     hdd_free = int(hdd_console_data[52])
@@ -55,7 +55,19 @@ def get_hdd_info():  # return list format - hdd_total, hdd_used, hdd_free
 
 
 class SysinfoDatabase(object):
+    """ Current database structure
+    {'2016,05,19,01,05,05': {
+                            'cpu_user': 45.33,
+                            'cpu_sys': 17.22,
+                            'cpu_total': 60.11,
+                            ....
+                            'hdd_free':5952
+                            }
+    } """
+
     def __init__(self, db_file_name):
+        self.db_values_keywords = ['cpu_user', 'cpu_sys', 'cpu_total', 'cpu_idle', 'mem_total', 'mem_used',
+                                   'mem_free', 'mem_cached', 'hdd_total', 'hdd_used', 'hdd_free']
         self.db_file_name = db_file_name
         if not os.path.isfile(self.db_file_name):
             self.sysinfo_database = {}
@@ -65,13 +77,12 @@ class SysinfoDatabase(object):
 
         else:
             self.db_is_empty = False
+            with open(self.db_file_name, 'r') as self.database_file:
+                self.sysinfo_database = self.database_file.read().strip()
+                self.sysinfo_database = json.loads(self.sysinfo_database)
 
-        with open(self.db_file_name, 'r') as self.database_file:
-            self.sysinfo_database = self.database_file.read().strip()
-            self.sysinfo_database = json.loads(self.sysinfo_database)
-
-        self.database_keywords = self.sysinfo_database.keys()
-        self.database_keywords.sort(reverse=True)
+        self.db_index_keywords = self.sysinfo_database.keys()
+        self.db_index_keywords.sort(reverse=True)
 
         self.lastrh = None  # Variable definitions
         self.periods_averaged = None
@@ -83,9 +94,10 @@ class SysinfoDatabase(object):
         self.current_period_timestamp = None
         self.temp = None
         self.database_size = 0
+        self.one_record_data = {}
 
     def get_last_record_hour(self):  # Returns hour of last record in database
-        self.lastrh = self.database_keywords[0]
+        self.lastrh = self.db_index_keywords[0]
         return int(self.lastrh.split(',')[3])
 
     def select(self, start=None, end=None, limit=12, groupbyhour=True):  # Select and average data from database
@@ -94,16 +106,16 @@ class SysinfoDatabase(object):
         if self.db_is_empty:
             return self.select_result, self.periods_averaged
         if start is None:
-            start = self.database_keywords[0]
+            start = self.db_index_keywords[0]
         if end is None:
-            end = self.database_keywords[len(self.database_keywords)-1]
+            end = self.db_index_keywords[len(self.db_index_keywords) - 1]
 
         self.averaging_period_result = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         self.current_period_timestamp = None
         self.averaged_in_period = 0
         self.single_record_data = None
 
-        for current_key in self.database_keywords:
+        for current_key in self.db_index_keywords:
             if start >= current_key >= end:
                 if self.current_period_timestamp is None:  # Setting up first avg period
                     self.current_period_timestamp = current_key[0:13]
@@ -122,8 +134,8 @@ class SysinfoDatabase(object):
                         self.current_period_timestamp = current_key[0:13]
 
                 self.single_record_data = self.sysinfo_database[current_key]  # Summing average
-                for index, value in enumerate(self.single_record_data):
-                    self.averaging_period_result[index] += value
+                for index, value_keyword in enumerate(self.db_values_keywords):
+                    self.averaging_period_result[index] += self.single_record_data[value_keyword]
                 self.averaged_in_period += 1
             else:
                 if current_key < end:
@@ -137,11 +149,14 @@ class SysinfoDatabase(object):
         return self.select_result, self.periods_averaged
 
     def new_record(self, timestamp, data):  # Adding new record into database
-        self.sysinfo_database[timestamp] = data
+        self.one_record_data = {}
+        for index, value in enumerate(data):
+            self.one_record_data[self.db_values_keywords[index]] = value
+        self.sysinfo_database[timestamp] = self.one_record_data
         with open(self.db_file_name, 'w') as self.database_file:
             self.database_file.write(json.dumps(self.sysinfo_database))
-        self.database_keywords = self.sysinfo_database.keys()
-        self.database_keywords.sort(reverse=True)
+        self.db_index_keywords = self.sysinfo_database.keys()
+        self.db_index_keywords.sort(reverse=True)
 
     def erase(self):  # Database full erase
         self.sysinfo_database = {}
@@ -150,14 +165,14 @@ class SysinfoDatabase(object):
             self.database_file.write(json.dumps(self.sysinfo_database))
 
     def clean(self, size_limit=500):  # Cleans database from old records (default is 500 record limit)
-        self.database_size = len(self.database_keywords)
+        self.database_size = len(self.db_index_keywords)
         while self.database_size > size_limit:
-            del self.sysinfo_database[self.database_keywords[self.database_size - 1]]
+            del self.sysinfo_database[self.db_index_keywords[self.database_size - 1]]
             self.database_size -= 1
         with open(self.db_file_name, 'w') as self.database_file:
             self.database_file.write(json.dumps(self.sysinfo_database))
-        self.database_keywords = self.sysinfo_database.keys()
-        self.database_keywords.sort(reverse=True)
+        self.db_index_keywords = self.sysinfo_database.keys()
+        self.db_index_keywords.sort(reverse=True)
 
 ###################################################################################################################
 
@@ -333,8 +348,8 @@ def send_email(attach_table, excel_file, sender_adress, sender_pass, receiver_ad
     mail.attach(em_table_part)
     em_client = smtplib.SMTP_SSL('smtp.gmail.com', '465')
     em_client.ehlo()
-    em_client.login(sender_adress, sender_pass)
-    em_client.sendmail(sender_adress, receiver_adress, mail.as_string())
+    em_client.login(sender_adress, sender_pass)  # password deleted
+    em_client.sendmail(sender_adress, receiver_adress, mail.as_string())  # e-mail deleted
     em_client.close()
 
 ######################################################################################################################
