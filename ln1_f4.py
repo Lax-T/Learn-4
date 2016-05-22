@@ -35,21 +35,21 @@ def get_cpu_info():
     cpu_sys = sum(float(x) for x in cpu_console_data[22:29])
     cpu_total = cpu_user + cpu_sys
     cpu_idle = float(cpu_console_data[30])
-    return [cpu_user, cpu_sys, cpu_total, cpu_idle]
+    return {'cpu_user': cpu_user, 'cpu_sys': cpu_sys, 'cpu_total': cpu_total, 'cpu_idle': cpu_idle}
 
 
 def get_mem_info():
     mem_console_data = get_sysresinfo('free -m')
     mem_total, mem_used = int(mem_console_data[7]), int(mem_console_data[8])
     mem_free, mem_cached = int(mem_console_data[9]), int(mem_console_data[12])
-    return [mem_total, mem_used, mem_free, mem_cached]
+    return {'mem_total': mem_total, 'mem_used': mem_used, 'mem_free': mem_free, 'mem_cached': mem_cached}
 
 
 def get_hdd_info():
     hdd_console_data = get_sysresinfo('df -m --total')
     hdd_total, hdd_used = int(hdd_console_data[50]), int(hdd_console_data[51])
     hdd_free = int(hdd_console_data[52])
-    return [hdd_total, hdd_used, hdd_free]
+    return {'hdd_total': hdd_total, 'hdd_used': hdd_used, 'hdd_free': hdd_free}
 
 ###############################################################################################################
 
@@ -64,10 +64,7 @@ class SysinfoDatabase(object):
                             'hdd_free':5952
                             }
     } """
-
     def __init__(self, db_file_name):
-        self.db_values_keywords = ['cpu_user', 'cpu_sys', 'cpu_total', 'cpu_idle', 'mem_total', 'mem_used',
-                                   'mem_free', 'mem_cached', 'hdd_total', 'hdd_used', 'hdd_free']
         self.db_file_name = db_file_name
         if not os.path.isfile(self.db_file_name):
             self.sysinfo_database = {}
@@ -88,13 +85,13 @@ class SysinfoDatabase(object):
         self.periods_averaged = None
         self.select_result = None
         self.averaging_period_result = None
-        self.records_in_period = None
         self.single_record_data = None
         self.averaged_in_period = 0
         self.current_period_timestamp = None
-        self.temp = None
         self.database_size = 0
-        self.one_record_data = {}
+        self.new_record_data = {}
+        self.sysinfo_keywords = ['cpu_user', 'cpu_sys', 'cpu_total', 'cpu_idle', 'mem_total', 'mem_used',
+                    'mem_free', 'mem_cached', 'hdd_total', 'hdd_used', 'hdd_free']
 
     def get_last_record_hour(self):  # Returns hour of last record in database
         self.lastrh = self.db_index_keywords[0]
@@ -102,7 +99,7 @@ class SysinfoDatabase(object):
 
     def select(self, start=None, end=None, limit=12, groupbyhour=True):  # Select and average data from database
         self.periods_averaged = 0
-        self.select_result = []
+        self.select_result = {}
         if self.db_is_empty:
             return self.select_result, self.periods_averaged
         if start is None:
@@ -110,7 +107,10 @@ class SysinfoDatabase(object):
         if end is None:
             end = self.db_index_keywords[len(self.db_index_keywords) - 1]
 
-        self.averaging_period_result = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        self.averaging_period_result = {'cpu_user': 0, 'cpu_sys': 0, 'cpu_total': 0, 'cpu_idle': 0,
+                                        'mem_total': 0, 'mem_used': 0, 'mem_free': 0, 'mem_cached': 0,
+                                        'hdd_total': 0, 'hdd_used': 0, 'hdd_free': 0
+                                        }
         self.current_period_timestamp = None
         self.averaged_in_period = 0
         self.single_record_data = None
@@ -122,37 +122,36 @@ class SysinfoDatabase(object):
 
                 if groupbyhour:
                     if self.current_period_timestamp != current_key[0:13]:
-                        for index in range(0, len(self.averaging_period_result)):  # Avg and Add data to sel. result
-                            self.averaging_period_result[index] /= self.averaged_in_period
-                        self.averaging_period_result += self.current_period_timestamp.split(',')
-                        self.select_result.append(self.averaging_period_result)
+                        for key in self.sysinfo_keywords:  # Avg and Add data to sel. result
+                            self.averaging_period_result[key] /= self.averaged_in_period
+                        self.select_result[self.current_period_timestamp] = self.averaging_period_result
                         self.periods_averaged += 1
-                        self.averaging_period_result = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                        self.averaging_period_result = {'cpu_user': 0, 'cpu_sys': 0, 'cpu_total': 0,
+                                                        'cpu_idle': 0, 'mem_total': 0, 'mem_used': 0,
+                                                        'mem_free': 0, 'mem_cached': 0, 'hdd_total': 0,
+                                                        'hdd_used': 0, 'hdd_free': 0
+                                                        }
                         self.averaged_in_period = 0
                         if self.periods_averaged >= limit:
                             break
                         self.current_period_timestamp = current_key[0:13]
 
                 self.single_record_data = self.sysinfo_database[current_key]  # Summing average
-                for index, value_keyword in enumerate(self.db_values_keywords):
-                    self.averaging_period_result[index] += self.single_record_data[value_keyword]
+                for key in self.sysinfo_keywords:
+                    self.averaging_period_result[key] += self.single_record_data[key]
                 self.averaged_in_period += 1
             else:
                 if current_key < end:
                     break
         if self.averaged_in_period != 0:
-            for index in range(0, len(self.averaging_period_result)):  # Avg and Add data to sel. result
-                self.averaging_period_result[index] /= self.averaged_in_period
-            self.averaging_period_result += self.current_period_timestamp.split(',')
-            self.select_result.append(self.averaging_period_result)
+            for key in self.sysinfo_keywords:  # Avg and Add data to sel. result
+                self.averaging_period_result[key] /= self.averaged_in_period
+            self.select_result[self.current_period_timestamp] = self.averaging_period_result
             self.periods_averaged += 1
         return self.select_result, self.periods_averaged
 
     def new_record(self, timestamp, data):  # Adding new record into database
-        self.one_record_data = {}
-        for index, value in enumerate(data):
-            self.one_record_data[self.db_values_keywords[index]] = value
-        self.sysinfo_database[timestamp] = self.one_record_data
+        self.sysinfo_database[timestamp] = data
         with open(self.db_file_name, 'w') as self.database_file:
             self.database_file.write(json.dumps(self.sysinfo_database))
         self.db_index_keywords = self.sysinfo_database.keys()
@@ -187,7 +186,7 @@ def start_html_table():
             """
 
 
-def extend_html_table(e_html_table, table_data):
+def extend_html_table(e_html_table, data, timestamp):
     e_html_table += """
                 <tr>
                     <td>Averaging period {13}.{12}.{11} {14}:00 - {14}:59</td>
@@ -212,11 +211,11 @@ def extend_html_table(e_html_table, table_data):
                     <td>used:{9:d}</td>
                     <td>free:{10:d}</td>
                 </tr>
-    """.format(table_data[0], table_data[1], table_data[2],
-               table_data[3], table_data[4], table_data[5],
-               table_data[6], table_data[7], table_data[8],
-               table_data[9], table_data[10], table_data[11],
-               table_data[12], table_data[13], table_data[14])
+    """.format(data['cpu_total'], data['cpu_user'], data['cpu_sys'],
+               data['cpu_idle'], data['mem_total'], data['mem_used'],
+               data['mem_free'], data['mem_cached'], data['hdd_total'],
+               data['hdd_used'], data['hdd_free'], timestamp[2],
+               timestamp[1], timestamp[0], timestamp[3])
 
     return e_html_table
 
@@ -288,15 +287,15 @@ class ExcelTable(object):
         self.row3_data = []
         self.row4_data = []
 
-    def table_data_update(self, table_data):
-        self.row1_data = ['Averaging period %s.%s.%s %s:00 - %s:59' % (table_data[13], table_data[12], table_data[11],
-                                                                       table_data[14], table_data[14]), '', '', '', '']
-        self.row2_data = ['CPU', 'total: %.2f' % (table_data[0]), 'user: %.2f' % (table_data[1]), 'system: %.2f'
-                          % (table_data[2]), 'idle: %.2f' % (table_data[3])]
-        self.row3_data = ['Memory', 'total: %d' % (table_data[4]), 'used: %d'
-                          % (table_data[5]), 'free: %d' % (table_data[6]), 'cached: %d' % (table_data[7])]
-        self.row4_data = ['Hard disk drive', 'total: %d' % (table_data[8]), 'used: %d'
-                          % (table_data[9]), 'free: %d' % (table_data[10]), '']
+    def table_data_update(self, data, timestamp):
+        self.row1_data = ['Averaging period %s.%s.%s %s:00 - %s:59' % (timestamp[2], timestamp[1], timestamp[0],
+                                                                       timestamp[3], timestamp[3]), '', '', '', '']
+        self.row2_data = ['CPU', 'total: %.2f' % (data['cpu_total']), 'user: %.2f' % (data['cpu_user']), 'system: %.2f'
+                          % (data['cpu_sys']), 'idle: %.2f' % (data['cpu_idle'])]
+        self.row3_data = ['Memory', 'total: %d' % (data['mem_total']), 'used: %d'
+                          % (data['mem_used']), 'free: %d' % (data['mem_free']), 'cached: %d' % (data['mem_cached'])]
+        self.row4_data = ['Hard disk drive', 'total: %d' % (data['hdd_total']), 'used: %d'
+                          % (data['hdd_used']), 'free: %d' % (data['hdd_free']), '']
 
     def extend_helper(self, exthe_row_data, exthe_border_style, exthe_first_col_font):
         self.table_row_index += 1
@@ -309,8 +308,8 @@ class ExcelTable(object):
             else:
                 self.active_cell.font = self.black_font
 
-    def extend(self, table_data):
-        self.table_data_update(table_data)  # Update table variables
+    def extend(self, data, timestamp):
+        self.table_data_update(data, timestamp)  # Update table variables
         self.extend_helper(self.row1_data, self.toprow_border_style, self.blue_font)
         self.extend_helper(self.row2_data, self.middlerow_border_style, self.red_font)
         self.extend_helper(self.row3_data, self.middlerow_border_style, self.red_font)
@@ -377,13 +376,12 @@ def update_additional_database(adb_file_name, a_database):
 ######################################################################################################################
 
 if __name__ == '__main__':
-    system_usage_info = get_cpu_info() + get_mem_info() + get_hdd_info()
+    system_usage_info = dict(get_cpu_info().items() + get_mem_info().items() + get_hdd_info().items())
     print system_usage_info
     systime_customformat = datetime.datetime.now()
     systime_customformat = systime_customformat.strftime('%Y,%m,%d,%H,%M,%S')
 
     systeminfo_database = SysinfoDatabase(DATABASE_FILE_NAME)
-
     select_result, periods_in_sel_result = systeminfo_database.select()
 
     additional_database = load_additionad_database(ADD_DATABASE_FILE_NAME)
@@ -394,21 +392,22 @@ if __name__ == '__main__':
     html_table = start_html_table()
 
     if last_em_send_hour != current_system_hour+1:  # check if averaging period changed and need to send email
-        index = 0
-        while index < periods_in_sel_result and index < 5:  # 5 - table size limit
-            html_table = extend_html_table(html_table, select_result[index])
-            index += 1
+        sel_res_timestamps = select_result.keys()
+        sel_res_timestamps.sort(reverse=True)
+        for index, timestamp in enumerate(sel_res_timestamps):  # 5 - table size limit
+            html_table = extend_html_table(html_table, select_result[timestamp], timestamp.split(','))
+            if index >= 4:
+                break
         html_table = end_html_table(html_table)
         if emails_sent >= 11:  # 11 - is to include excel table in every 12th email (every 12 hours)
             new_excel_table = ExcelTable()
-            index = 0
-            while index < periods_in_sel_result and index < 12:  # 12 - table size limit
-                new_excel_table.extend(select_result[index])
-                index += 1
+            for index, timestamp in enumerate(sel_res_timestamps):  # 12 - table size limit
+                new_excel_table.extend(select_result[timestamp], timestamp.split(','))
+                if index >= 11:
+                    break
             new_excel_table.save(EXCEL_TABLE_NAME)
             send_email(html_table, EXCEL_TABLE_NAME, SENDER_EADRESS, SENDER_EPASSWORD, RECEIVER_EADRESS)
             emails_sent = 0
-
         else:
             send_email(html_table, None, SENDER_EADRESS, SENDER_EPASSWORD, RECEIVER_EADRESS)
             emails_sent += 1
